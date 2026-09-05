@@ -2,6 +2,8 @@ import type { Point3 } from "./measure";
 
 const LANDMARK_COUNT = 21;
 
+const ALL_LANDMARKS = Array.from({ length: LANDMARK_COUNT }, (_, i) => i);
+
 /**
  * Estimates how many anchor-plane units correspond to one metre of real hand.
  *
@@ -31,23 +33,38 @@ const LANDMARK_COUNT = 21;
 export function estimatePlaneScale(
   planar: ReadonlyArray<{ x: number; y: number }>,
   world: ReadonlyArray<Point3>,
+  /**
+   * Which landmarks to fit over. All of them by default, which is what a ring
+   * wants — the more points the steadier the fit.
+   *
+   * A subset is worth asking for when the answer is needed at one *place* on the
+   * hand rather than over the hand as a whole. The fit reports an average
+   * distance, and the fingers reach a long way out of the palm's plane: once the
+   * hand tips, that average stops describing any particular part of it. The
+   * bracelet solver fits the palm alone for exactly this reason.
+   */
+  indices?: ReadonlyArray<number>,
 ): number | null {
   if (planar.length < LANDMARK_COUNT || world.length < LANDMARK_COUNT) return null;
+
+  const points = indices ?? ALL_LANDMARKS;
+  const count = points.length;
+  if (count < 3) return null;
 
   let pcx = 0;
   let pcy = 0;
   let wcx = 0;
   let wcy = 0;
-  for (let i = 0; i < LANDMARK_COUNT; i++) {
+  for (const i of points) {
     pcx += planar[i].x;
     pcy += planar[i].y;
     wcx += world[i].x;
     wcy += world[i].y;
   }
-  pcx /= LANDMARK_COUNT;
-  pcy /= LANDMARK_COUNT;
-  wcx /= LANDMARK_COUNT;
-  wcy /= LANDMARK_COUNT;
+  pcx /= count;
+  pcy /= count;
+  wcx /= count;
+  wcy /= count;
 
   // Fit the axes separately. A mirrored preview negates plane x but not world x,
   // so a combined fit would have the x terms cancelling the y terms; taking each
@@ -58,7 +75,7 @@ export function estimatePlaneScale(
   let numY = 0;
   let denY = 0;
 
-  for (let i = 0; i < LANDMARK_COUNT; i++) {
+  for (const i of points) {
     const px = planar[i].x - pcx;
     const py = planar[i].y - pcy;
     const wx = world[i].x - wcx;

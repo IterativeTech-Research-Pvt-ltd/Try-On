@@ -37,6 +37,18 @@ const MODELS = [
     minBytes: 3_000_000,
     approx: "5.5 MB",
   },
+  {
+    // Earrings, and only earrings. The pose model reaches the ears too, but with
+    // eleven coarse face points inferred as part of a whole-body estimate — fine
+    // for the necklace, which wants a shoulder line, and nowhere near enough to
+    // hang a two-centimetre piece off a lobe. This model puts 478 points on the
+    // face alone and reports the head's own rotation matrix with them.
+    name: "face landmarker",
+    dest: "public/mediapipe/models/face_landmarker.task",
+    url: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    minBytes: 2_000_000,
+    approx: "3.8 MB",
+  },
 ];
 
 async function exists(target, minBytes = 1) {

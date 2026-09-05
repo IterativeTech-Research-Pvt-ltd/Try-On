@@ -8,7 +8,11 @@ import { fixedFraming, framingTransform } from "@/lib/hand/framing";
 import { StudioEnvironment } from "@/components/three/StudioEnvironment";
 import { TrackedRing } from "@/components/three/TrackedRing";
 import { TrackedNecklace } from "@/components/three/TrackedNecklace";
+import { TrackedBracelet } from "@/components/three/TrackedBracelet";
 import { getNecklace, NECKLACES } from "@/lib/jewellery/catalog";
+import { getBracelet, BRACELETS } from "@/lib/jewellery/bracelets";
+import { getEarring, EARRINGS } from "@/lib/jewellery/earrings";
+import { TrackedEarrings } from "@/components/three/TrackedEarrings";
 import { useTryOnStore } from "@/lib/store/tryon";
 import type { Ring } from "@/lib/rings/types";
 import { useCamera } from "./useCamera";
@@ -16,6 +20,7 @@ import { CameraGate } from "./CameraGate";
 import { TrackingHud } from "./TrackingHud";
 import { DebugOverlay } from "./DebugOverlay";
 import { NeckDebugOverlay } from "./NeckDebugOverlay";
+import { EarDebugOverlay } from "./EarDebugOverlay";
 import { CardCalibration } from "./CardCalibration";
 
 /**
@@ -32,6 +37,10 @@ export function TryOnStage({ ring }: { ring: Ring }) {
   const mode = useTryOnStore((s) => s.mode);
   const necklaceId = useTryOnStore((s) => s.necklaceId);
   const necklace = getNecklace(necklaceId) ?? NECKLACES[0];
+  const braceletId = useTryOnStore((s) => s.braceletId);
+  const bracelet = getBracelet(braceletId) ?? BRACELETS[0];
+  const earringId = useTryOnStore((s) => s.earringId);
+  const earring = getEarring(earringId) ?? EARRINGS[0];
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const glRef = useRef<HTMLCanvasElement | null>(null);
@@ -171,14 +180,26 @@ export function TryOnStage({ ring }: { ring: Ring }) {
         <directionalLight position={[0.4, 0.7, 1.2]} intensity={1.5} />
         <directionalLight position={[-0.8, -0.3, 1]} intensity={0.55} color="#dce8ff" />
         <ambientLight intensity={0.22} />
-        {mode === "ring" ? (
-          <TrackedRing video={videoEl} ring={ring} />
-        ) : (
+        {mode === "ring" && <TrackedRing video={videoEl} ring={ring} />}
+        {mode === "necklace" && (
           <TrackedNecklace video={videoEl} metal={metal} necklace={necklace} />
+        )}
+        {mode === "bracelet" && (
+          <TrackedBracelet video={videoEl} metal={metal} bracelet={bracelet} />
+        )}
+        {mode === "earring" && (
+          <TrackedEarrings video={videoEl} metal={metal} earring={earring} />
         )}
       </Canvas>
 
-      {mode === "necklace" ? <NeckDebugOverlay /> : <DebugOverlay />}
+      {/*
+        Each overlay reads the mailbox its own solver fills, so showing one in a
+        mode that never writes to it would draw a stale skeleton over a live
+        picture. The bracelet solver publishes no debug frame, so it gets none.
+      */}
+      {mode === "necklace" && <NeckDebugOverlay />}
+      {mode === "ring" && <DebugOverlay />}
+      {mode === "earring" && <EarDebugOverlay />}
       <TrackingHud onCapture={capture} />
       <CardCalibration stageWidth={stage.width} stageHeight={stage.height} />
 

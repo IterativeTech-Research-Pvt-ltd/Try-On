@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTryOnStore, type TrackingStatus } from "@/lib/store/tryon";
+import { useTryOnStore, type TrackingStatus, type TryOnMode } from "@/lib/store/tryon";
 
 const TONE: Record<TrackingStatus, string | null> = {
   idle: null,
@@ -22,14 +22,23 @@ const TONE: Record<TrackingStatus, string | null> = {
  * necklace that never appears has several unrelated causes, and the only thing
  * separating them was a message this component was discarding.
  */
-function waitingCopy(status: TrackingStatus, mode: "ring" | "necklace", detail?: string) {
+function waitingCopy(status: TrackingStatus, mode: TryOnMode, detail?: string) {
   if (detail) return detail;
   if (status === "loading-model") {
-    return mode === "necklace" ? "Loading pose tracking" : "Loading hand tracking";
+    return mode === "necklace" || mode === "earring"
+      ? "Loading pose tracking"
+      : "Loading hand tracking";
   }
   if (status === "searching") {
-    return mode === "necklace"
-      ? "Sit back until your head and both shoulders are in frame"
+    if (mode === "necklace") {
+      return "Sit back until your head and both shoulders are in frame";
+    }
+    if (mode === "earring") return "Bring your head into the frame";
+    // The bracelet is tracked from the hand too — there is no forearm landmark —
+    // so asking for the wrist alone would have someone hold up something the
+    // model cannot see.
+    return mode === "bracelet"
+      ? "Show your hand and wrist to the camera"
       : "Show your hand to the camera";
   }
   if (status === "requesting-camera") return "Waiting for camera";

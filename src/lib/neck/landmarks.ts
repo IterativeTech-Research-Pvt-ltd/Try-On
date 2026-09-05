@@ -27,6 +27,12 @@ export const PL = {
   RIGHT_MOUTH: 10,
   LEFT_SHOULDER: 11,
   RIGHT_SHOULDER: 12,
+  // Read by the bracelet, not the necklace. The hand model stops at the wrist,
+  // so a forearm's direction can only come from a model that has an elbow.
+  LEFT_ELBOW: 13,
+  RIGHT_ELBOW: 14,
+  LEFT_WRIST: 15,
+  RIGHT_WRIST: 16,
   LEFT_HIP: 23,
   RIGHT_HIP: 24,
 } as const;

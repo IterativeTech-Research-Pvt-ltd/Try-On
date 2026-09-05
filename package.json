@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify": "tsx scripts/verify-solver.ts && tsx scripts/verify-necklace.ts && tsx scripts/verify-geometry.ts",
+    "verify": "tsx scripts/verify-solver.ts && tsx scripts/verify-necklace.ts && tsx scripts/verify-bracelet.ts && tsx scripts/verify-earring.ts && tsx scripts/verify-geometry.ts",
     "setup:mediapipe": "node scripts/fetch-mediapipe.mjs",
     "postinstall": "node scripts/fetch-mediapipe.mjs",
     "build:check": "BUILD_DIST_DIR=.next-check next build"

@@ -9,6 +9,15 @@ import {
   DEFAULT_NECKLACE_ANCHOR,
   type NecklaceAnchor,
 } from "@/lib/neck/necklacePose";
+import { DEFAULT_WRIST_ANCHOR, type WristAnchor } from "@/lib/hand/wristPose";
+import { DEFAULT_EAR_ANCHOR, type EarAnchor } from "@/lib/face/earPose";
+import { EARRINGS } from "@/lib/jewellery/earrings";
+import { BRACELETS } from "@/lib/jewellery/bracelets";
+import {
+  DEFAULT_DIAMETER_MM,
+  semiMajorForDiameterMm,
+  snapToStockDiameter,
+} from "@/lib/jewellery/wristFit";
 import { RINGS } from "@/lib/rings/catalog";
 import { DEFAULT_SIZE, sizeToDiameterMm, snapToStockSize } from "@/lib/rings/sizes";
 import type { GemId, MetalId } from "@/lib/rings/types";
@@ -32,6 +41,28 @@ export type SizeReading = {
   settled: boolean;
 };
 
+/** What the camera currently believes about the wrist, in real millimetres. */
+export type BraceletReading = {
+  /** Breadth across the wrist. */
+  widthMm: number;
+  /** What a tape would read round it. */
+  circumferenceMm: number;
+  /** Inner fitting diameter of the band being drawn. */
+  fittingDiameterMm: number;
+  spread: number;
+  settled: boolean;
+};
+
+/** What the camera currently believes about the head. */
+export type EarReading = {
+  /** Ear-to-ear breadth, in true millimetres. */
+  headBreadthMm: number;
+  /** How far the head is turned, in degrees. */
+  headTurnDeg: number;
+  spread: number;
+  settled: boolean;
+};
+
 export type CalibrationSource = "none" | "card" | "known-size";
 
 type Persisted = {
@@ -39,15 +70,27 @@ type Persisted = {
   calibrationSource: CalibrationSource;
   necklaceAnchor: NecklaceAnchor;
   anchor: RingAnchor;
+  wristAnchor: WristAnchor;
+  earAnchor: EarAnchor;
 };
 
-/** Which piece is being tried on. The two use different tracking models. */
-export type TryOnMode = "ring" | "necklace";
+/**
+ * Which piece is being tried on.
+ *
+ * A real mode rather than a filter over one catalogue: rings and bracelets are
+ * tracked by the hand model, necklaces and earrings by the pose model, they are
+ * measured against different parts of the body, and "size" means something
+ * different in every one of them — a US size, a millimetre circumference, an
+ * inner diameter, a drop.
+ */
+export type TryOnMode = "ring" | "necklace" | "bracelet" | "earring";
 
 type TryOnState = Persisted & {
   mode: TryOnMode;
   ringId: string;
   necklaceId: string;
+  braceletId: string;
+  earringId: string;
   metal: MetalId;
   /**
    * Stone the wearer picked, or null to use whichever the ring was designed around.
@@ -74,6 +117,28 @@ type TryOnState = Persisted & {
   anchor: RingAnchor;
   /** Where the necklace sits, in neck-relative terms. */
   necklaceAnchor: NecklaceAnchor;
+  /** Where the bracelet sits, in wrist-relative terms. */
+  wristAnchor: WristAnchor;
+  /**
+   * Inner semi-major axis the band is currently built at, in millimetres.
+   *
+   * Published from the tracker with a dead band rather than read every frame:
+   * the number of stones in a row comes from the wrist's own circumference, so
+   * this is what the geometry is rebuilt on, and a wrist does not change size.
+   */
+  braceletSemiMajorMm: number;
+  /** Inner fitting diameter the band is drawn at when auto-fit is off. */
+  braceletDiameterMm: number;
+  /** Draw at the measured wrist rather than the chosen size. */
+  braceletAutoFit: boolean;
+  /** Live wrist measurement from the camera, or null before one settles. */
+  braceletReading: BraceletReading | null;
+  /** True once a size has been adopted from the first settled wrist reading. */
+  braceletSizeAdopted: boolean;
+  /** Where the earrings hang, in head-relative terms. */
+  earAnchor: EarAnchor;
+  /** Live head measurement from the camera, or null before one settles. */
+  earReading: EarReading | null;
   /** Measured neck radius in millimetres; drives how the chain is laid. */
   neckSizeMm: number;
   /** What the camera measured about the neck, for the sizing panel. */
@@ -142,6 +207,15 @@ type TryOnState = Persisted & {
   setMode: (mode: TryOnMode) => void;
   setNecklace: (necklaceId: string) => void;
   setNecklaceAnchor: (patch: Partial<NecklaceAnchor>) => void;
+  setBracelet: (braceletId: string) => void;
+  setWristAnchor: (patch: Partial<WristAnchor>) => void;
+  setBraceletSemiMajorMm: (mm: number) => void;
+  setBraceletDiameterMm: (mm: number) => void;
+  setBraceletAutoFit: (autoFit: boolean) => void;
+  setBraceletReading: (reading: BraceletReading | null) => void;
+  setEarring: (earringId: string) => void;
+  setEarAnchor: (patch: Partial<EarAnchor>) => void;
+  setEarReading: (reading: EarReading | null) => void;
   /** Discards any hand-dialled offsets and returns to what the camera measures. */
   resetPlacement: () => void;
   setNeckSizeMm: (mm: number) => void;
@@ -165,6 +239,8 @@ export const useTryOnStore = create<TryOnState>()(
       mode: "ring",
       ringId: RINGS[0].id,
       necklaceId: "infinity-heart",
+      braceletId: BRACELETS[0].id,
+      earringId: EARRINGS[0].id,
       metal: RINGS[0].metals[0],
       gem: null,
       finger: "ring",
@@ -179,6 +255,14 @@ export const useTryOnStore = create<TryOnState>()(
 
       anchor: anchorFor("ring"),
       necklaceAnchor: DEFAULT_NECKLACE_ANCHOR,
+      wristAnchor: DEFAULT_WRIST_ANCHOR,
+      braceletSemiMajorMm: semiMajorForDiameterMm(DEFAULT_DIAMETER_MM),
+      braceletDiameterMm: DEFAULT_DIAMETER_MM,
+      braceletAutoFit: true,
+      braceletReading: null,
+      braceletSizeAdopted: false,
+      earAnchor: DEFAULT_EAR_ANCHOR,
+      earReading: null,
       neckSizeMm: 57,
       neckReading: null,
       mirrored: true,
@@ -287,14 +371,82 @@ export const useTryOnStore = create<TryOnState>()(
           status: "loading-model",
           reading: null,
           sizeAdopted: false,
-          zoom: mode === "necklace" ? 1.2 : 1.7,
+          braceletReading: null,
+          braceletSizeAdopted: false,
+          earReading: null,
+          // A bracelet sits between the hand modes and the body ones: it needs
+          // the forearm in frame as well as the hand.
+          //
+          // Earrings want a *closer* view than a necklace — the piece is a couple
+          // of centimetres on the side of a head — but the crop is fixed on the
+          // middle of the frame, and a head is habitually above the middle. Past
+          // about 1.5 the crop starts cutting off the very ears it was tightened
+          // for, which reads as the earrings not being placed rather than as the
+          // view being wrong. Better to open with everything visible and leave
+          // the zoom slider to anyone who wants a closer look.
+          zoom:
+            mode === "necklace"
+              ? 1.2
+              : mode === "bracelet"
+                ? 1.4
+                : mode === "earring"
+                  ? 1.5
+                  : 1.7,
         }),
       setNecklace: (necklaceId) => set({ necklaceId }),
       setNecklaceAnchor: (patch) =>
         set((s) => ({ necklaceAnchor: { ...s.necklaceAnchor, ...patch } })),
+
+      setBracelet: (braceletId) =>
+        set((state) => {
+          const bracelet = BRACELETS.find((b) => b.id === braceletId);
+          if (!bracelet) return state;
+          // Carry the metal over when the new piece offers it, so switching
+          // design does not silently change what the shopper is looking at.
+          const metal = bracelet.metals.includes(state.metal)
+            ? state.metal
+            : bracelet.metals[0];
+          return { braceletId, metal };
+        }),
+      setWristAnchor: (patch) =>
+        set((s) => ({ wristAnchor: { ...s.wristAnchor, ...patch } })),
+      setBraceletSemiMajorMm: (braceletSemiMajorMm) => set({ braceletSemiMajorMm }),
+      setBraceletDiameterMm: (braceletDiameterMm) =>
+        set({ braceletDiameterMm, braceletAutoFit: false }),
+      setBraceletAutoFit: (braceletAutoFit) => set({ braceletAutoFit }),
+      setBraceletReading: (reading) =>
+        set((state) => {
+          if (!reading) return { braceletReading: reading };
+          // The first steady reading picks the size, so the piece on screen is
+          // the one that would actually fit. After that it is the wearer's.
+          if (!state.braceletSizeAdopted && reading.settled) {
+            return {
+              braceletReading: reading,
+              braceletDiameterMm: snapToStockDiameter(reading.fittingDiameterMm),
+              braceletSizeAdopted: true,
+            };
+          }
+          return { braceletReading: reading };
+        }),
+
+      setEarring: (earringId) =>
+        set((state) => {
+          const earring = EARRINGS.find((e) => e.id === earringId);
+          if (!earring) return state;
+          const metal = earring.metals.includes(state.metal)
+            ? state.metal
+            : earring.metals[0];
+          return { earringId, metal };
+        }),
+      setEarAnchor: (patch) =>
+        set((s) => ({ earAnchor: { ...s.earAnchor, ...patch } })),
+      setEarReading: (earReading) => set({ earReading }),
+
       resetPlacement: () =>
         set((s) => ({
           necklaceAnchor: DEFAULT_NECKLACE_ANCHOR,
+          wristAnchor: DEFAULT_WRIST_ANCHOR,
+          earAnchor: DEFAULT_EAR_ANCHOR,
           anchor: anchorFor(s.anchor.finger),
         })),
       setNeckSizeMm: (neckSizeMm) => set({ neckSizeMm }),
@@ -330,7 +482,31 @@ export const useTryOnStore = create<TryOnState>()(
         calibrationSource: state.calibrationSource,
         necklaceAnchor: state.necklaceAnchor,
         anchor: state.anchor,
+        wristAnchor: state.wristAnchor,
+        earAnchor: state.earAnchor,
       }),
+      /**
+       * Merge the anchors field by field rather than replacing them.
+       *
+       * The default merge overwrites each persisted key wholesale, which is fine
+       * for a number and wrong for a shaped object: an anchor that gains a field
+       * between visits comes back from an older session missing it, and a
+       * missing offset is not a stale value but a NaN — the piece vanishes off
+       * screen with nothing to say why. Layering the stored fields over the
+       * current defaults keeps a returning visitor's adjustments without letting
+       * their shape go stale.
+       */
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<Persisted>;
+        return {
+          ...current,
+          ...stored,
+          anchor: { ...current.anchor, ...stored.anchor },
+          necklaceAnchor: { ...current.necklaceAnchor, ...stored.necklaceAnchor },
+          wristAnchor: { ...current.wristAnchor, ...stored.wristAnchor },
+          earAnchor: { ...current.earAnchor, ...stored.earAnchor },
+        };
+      },
     },
   ),
 );
