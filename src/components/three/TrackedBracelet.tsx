@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { Group, Mesh } from "three";
 import type { HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
-import { getHandLandmarker } from "@/lib/hand/tracker";
+import { fallBackToCpu, getHandLandmarker, GPU_FAILURE_LIMIT } from "@/lib/hand/tracker";
 import { getPoseLandmarker } from "@/lib/neck/tracker";
 import { ForearmTracker } from "@/lib/hand/forearm";
 import { WristPoseSolver, type WristSolverOptions } from "@/lib/hand/wristPose";
@@ -72,6 +72,7 @@ export function TrackedBracelet({
   const poseTick = useRef(0);
   const wristPlane = useRef({ x: 0, y: 0 });
   const missCount = useRef(0);
+  const inferenceFailures = useRef(0);
   const lastVideoTime = useRef(-1);
   const lastReadingAt = useRef(0);
   const fpsWindow = useRef({ frames: 0, since: 0 });
@@ -170,8 +171,14 @@ export function TrackedBracelet({
     let hand = null;
     try {
       hand = landmarker.detectForVideo(video, now);
+      inferenceFailures.current = 0;
     } catch {
-      // A transient inference failure should not kill the render loop.
+      // A transient inference failure should not kill the render loop — but one
+      // that never stops is a GPU delegate this device cannot actually run.
+      if (++inferenceFailures.current === GPU_FAILURE_LIMIT) {
+        landmarkerRef.current = null;
+        fallBackToCpu()?.then((lm) => (landmarkerRef.current = lm)).catch(() => {});
+      }
       return;
     }
 

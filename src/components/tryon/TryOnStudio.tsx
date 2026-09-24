@@ -158,8 +158,8 @@ export function TryOnStudio() {
         />
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_366px]">
-        <div>
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_366px]">
+        <div className="min-w-0">
           <TryOnStage ring={ring} />
 
           <div className="mx-auto mt-4 flex max-w-md items-center gap-3">
@@ -212,7 +212,7 @@ export function TryOnStudio() {
           </div>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-accent">
               {piece.collection}

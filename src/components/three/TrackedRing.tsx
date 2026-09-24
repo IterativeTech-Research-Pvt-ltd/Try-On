@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { Group, Mesh } from "three";
 import type { HandLandmarker } from "@mediapipe/tasks-vision";
-import { getHandLandmarker } from "@/lib/hand/tracker";
+import { fallBackToCpu, getHandLandmarker, GPU_FAILURE_LIMIT } from "@/lib/hand/tracker";
 import { RingPoseSolver, type SolverOptions } from "@/lib/hand/ringPose";
 import type { FrameGeometry } from "@/lib/hand/projection";
 import { MedianTracker } from "@/lib/hand/measure";
@@ -43,6 +43,7 @@ export function TrackedRing({ video, ring }: TrackedRingProps) {
   const probe = useMemo(() => new FingerWidthProbe(), []);
   const silhouette = useRef<number | null>(null);
   const missCount = useRef(0);
+  const inferenceFailures = useRef(0);
   const lastVideoTime = useRef(-1);
   const lastLandmarks = useRef<ReadonlyArray<{ x: number; y: number }> | null>(null);
   const lastReadingAt = useRef(0);
@@ -148,13 +149,25 @@ export function TrackedRing({ video, ring }: TrackedRingProps) {
       smoothing: state.smoothing,
     };
 
+    let result;
+    try {
+      result = landmarker.detectForVideo(video, now);
+      inferenceFailures.current = 0;
+    } catch {
+      // A transient inference failure should not kill the render loop — but one
+      // that never stops is a GPU delegate this device cannot actually run.
+      if (++inferenceFailures.current === GPU_FAILURE_LIMIT) {
+        landmarkerRef.current = null;
+        fallBackToCpu()?.then((lm) => (landmarkerRef.current = lm)).catch(() => {});
+      }
+      return;
+    }
+
     let pose = null;
     try {
-      const result = landmarker.detectForVideo(video, now);
       lastLandmarks.current = result.landmarks?.[0] ?? null;
       pose = solver.solve(result, geometry, options, now);
     } catch {
-      // A transient inference failure should not kill the render loop.
       return;
     }
 

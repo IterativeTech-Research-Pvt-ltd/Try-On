@@ -21,7 +21,7 @@ export default function TryOnPage() {
 function StudioSkeleton() {
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:py-12">
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="aspect-[3/4] w-full animate-pulse rounded-3xl bg-surface-muted sm:aspect-[4/3] lg:aspect-square" />
         <div className="space-y-4">
           <div className="h-8 w-2/3 animate-pulse rounded bg-surface-muted" />

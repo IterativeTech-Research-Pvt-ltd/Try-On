@@ -32,6 +32,14 @@ export function useCamera(videoRef: React.RefObject<HTMLVideoElement | null>) {
 
   const start = useCallback(
     async (requestedDeviceId?: string) => {
+      // Browsers only expose the camera on HTTPS (or localhost). Opening the dev
+      // server from a phone at http://192.168.x.x lands here, and "not supported"
+      // would send someone hunting for a browser problem that does not exist.
+      if (typeof window !== "undefined" && !window.isSecureContext) {
+        setState("error");
+        setError("The camera only works over a secure (https://) connection. Open the site's https link instead.");
+        return;
+      }
       if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
         setState("error");
         setError("This browser does not support camera access.");
@@ -46,25 +54,7 @@ export function useCamera(videoRef: React.RefObject<HTMLVideoElement | null>) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: requestedDeviceId
-            ? {
-                deviceId: { exact: requestedDeviceId },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-              }
-            : {
-                facingMode: "user",
-                // A ring occupies a tiny part of the frame, and the digital zoom
-                // crops in further still — so ask for as much sensor detail as
-                // the camera will give, and let it fall back on its own.
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                frameRate: { ideal: 30 },
-              },
-        });
-
+        const stream = await openStream(requestedDeviceId);
         streamRef.current = stream;
         const video = videoRef.current;
         if (!video) {
@@ -78,7 +68,13 @@ export function useCamera(videoRef: React.RefObject<HTMLVideoElement | null>) {
             video.addEventListener("loadedmetadata", () => resolve(), { once: true });
           });
         }
-        await video.play();
+        try {
+          await video.play();
+        } catch (err) {
+          // iOS can reject play() on a muted inline stream that is already
+          // rolling; only a paused element is a real failure.
+          if (video.paused) throw err;
+        }
 
         setDeviceId(stream.getVideoTracks()[0]?.getSettings().deviceId ?? null);
         setState("ready");
@@ -114,4 +110,38 @@ export function useCamera(videoRef: React.RefObject<HTMLVideoElement | null>) {
   useEffect(() => stop, [stop]);
 
   return { state, error, devices, deviceId, start, stop };
+}
+
+/**
+ * Phones get a 720p request: 1080p costs every frame a texture upload and a
+ * downscale on a mobile GPU for detail the models never see, and some front
+ * cameras refuse it. If the preferred constraints are rejected outright, retry
+ * with whatever the camera offers rather than reporting that there is no camera.
+ */
+async function openStream(deviceId?: string): Promise<MediaStream> {
+  const mobile =
+    typeof navigator !== "undefined" &&
+    (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)));
+  const size = mobile
+    ? { width: { ideal: 1280 }, height: { ideal: 720 } }
+    : // A ring occupies a tiny part of the frame, and the digital zoom crops in
+      // further still — so on a desktop ask for as much sensor detail as the
+      // camera will give, and let it fall back on its own.
+      { width: { ideal: 1920 }, height: { ideal: 1080 } };
+
+  const preferred: MediaTrackConstraints = deviceId
+    ? { deviceId: { exact: deviceId }, ...size }
+    : { facingMode: "user", ...size, frameRate: { ideal: 30 } };
+
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: false, video: preferred });
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : "";
+    if (name !== "OverconstrainedError" && name !== "NotReadableError") throw err;
+    return navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: deviceId ? { deviceId: { exact: deviceId } } : true,
+    });
+  }
 }

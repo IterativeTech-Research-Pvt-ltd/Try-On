@@ -8,6 +8,7 @@ export const WASM_PATH = "/mediapipe/wasm";
 export const MODEL_PATH = "/mediapipe/models/hand_landmarker.task";
 
 let landmarkerPromise: Promise<HandLandmarker> | null = null;
+let forceCpu = false;
 
 /**
  * Creates the shared HandLandmarker. The WASM bundle and the 7.5 MB model are
@@ -30,12 +31,29 @@ async function create(): Promise<HandLandmarker> {
       minTrackingConfidence: 0.6,
     });
 
+  if (forceCpu) return build("CPU");
   try {
     return await build("GPU");
   } catch {
     return await build("CPU");
   }
 }
+
+/**
+ * Some mobile GPUs (older iPhones, a number of Android WebViews) create the GPU
+ * delegate without complaint and then throw on every inference. Construction
+ * cannot see that, so the render loop reports it here once failures pile up,
+ * and the landmarker is rebuilt on the CPU — slower, but it tracks.
+ */
+export function fallBackToCpu(): Promise<HandLandmarker> | null {
+  if (forceCpu) return null;
+  forceCpu = true;
+  disposeHandLandmarker();
+  return getHandLandmarker();
+}
+
+/** Consecutive inference failures before the GPU delegate is given up on. */
+export const GPU_FAILURE_LIMIT = 15;
 
 export function getHandLandmarker(): Promise<HandLandmarker> {
   landmarkerPromise ??= create().catch((err) => {

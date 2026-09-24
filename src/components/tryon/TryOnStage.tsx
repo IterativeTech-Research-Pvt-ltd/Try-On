@@ -46,6 +46,8 @@ export function TryOnStage({ ring }: { ring: Ring }) {
   const glRef = useRef<HTMLCanvasElement | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [stage, setStage] = useState({ width: 0, height: 0 });
+  // Bumped when the stream's own dimensions change — a phone rotating swaps them.
+  const [videoShape, setVideoShape] = useState(0);
 
   const camera = useCamera(videoRef);
   const mirrored = useTryOnStore((s) => s.mirrored);
@@ -64,6 +66,14 @@ export function TryOnStage({ ring }: { ring: Ring }) {
     if (camera.state === "ready") setVideoEl(videoRef.current);
     else setVideoEl(null);
   }, [camera.state]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onResize = () => setVideoShape((n) => n + 1);
+    video.addEventListener("resize", onResize);
+    return () => video.removeEventListener("resize", onResize);
+  }, []);
 
   // The card guide is sized in CSS pixels, so it needs the stage's real box.
   useEffect(() => {
@@ -94,7 +104,7 @@ export function TryOnStage({ ring }: { ring: Ring }) {
       container.clientHeight,
       mirrored,
     );
-  }, [zoom, mirrored, stage.width, stage.height, videoEl]);
+  }, [zoom, mirrored, stage.width, stage.height, videoEl, videoShape]);
 
   /**
    * Flattens the two layers into one PNG. The WebGL canvas has to be read in
@@ -162,7 +172,9 @@ export function TryOnStage({ ring }: { ring: Ring }) {
           preserveDrawingBuffer: true,
           toneMapping: ACESFilmicToneMapping,
         }}
-        dpr={[1, 2.5]}
+        // Capped at 2: phones report 3, and a 3x drawing buffer with
+        // preserveDrawingBuffer is enough to exhaust GPU memory on older iPhones.
+        dpr={[1, 2]}
         camera={{ fov: CAMERA_FOV, position: [0, 0, ANCHOR_DISTANCE], near: 0.01, far: 50 }}
         onCreated={({ gl }) => {
           glRef.current = gl.domElement;
